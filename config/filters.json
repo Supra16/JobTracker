@@ -1,0 +1,35 @@
+{
+  "seasons": ["fall", "autumn"],
+  "internshipYears": ["2026"],
+  "employmentTypes": ["intern", "internship", "co-op", "coop"],
+  "newGradTerms": [
+    "new grad",
+    "new graduate",
+    "new college grad",
+    "university graduate",
+    "recent graduate",
+    "graduate software engineer",
+    "entry level",
+    "entry-level",
+    "early career",
+    "campus hire",
+    "class of 2026",
+    "class of 2027"
+  ],
+  "newGradYears": ["2026", "2027"],
+  "roles": [
+    "software engineer",
+    "software engineering",
+    "software developer",
+    "technology intern",
+    "machine learning",
+    "data engineer",
+    "product manager",
+    "cybersecurity"
+  ],
+  "exclude": [
+    "senior software engineer",
+    "staff software engineer",
+    "principal software engineer"
+  ]
+}

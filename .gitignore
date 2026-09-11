@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.env
+
+# Contains Instagram cookies and local browser authentication.
+data/instagram-profile/
+
+# Runtime state and diagnostic screenshots can contain private information.
+data/state.json
+data/jobs.sqlite
+data/jobs.sqlite.tmp
+data/artifacts/
+
+# Playwright output
+playwright-report/
+test-results/
+
+Telegram Bot Token.txt
+data/*.sqlite*

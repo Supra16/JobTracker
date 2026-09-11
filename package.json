@@ -1,0 +1,28 @@
+{
+  "name": "instagram-story-job-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal Playwright archive for job links shared in Instagram Stories",
+  "scripts": {
+    "setup:instagram": "npm run build --silent && node dist/setup-instagram.js",
+    "test:telegram": "npm run build --silent && node --dns-result-order=ipv4first dist/test-telegram.js",
+    "dashboard": "npm run build --silent && node dist/dashboard-only.js",
+    "dev": "npm run build --silent && node --dns-result-order=ipv4first dist/index.js",
+    "test": "npm run build --silent && node --test test/*.test.js",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node --dns-result-order=ipv4first dist/index.js"
+  },
+  "dependencies": {
+    "cheerio": "latest",
+    "dotenv": "latest",
+    "playwright": "latest",
+    "sql.js": "^1.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/sql.js": "^1.4.11",
+    "typescript": "latest"
+  }
+}
