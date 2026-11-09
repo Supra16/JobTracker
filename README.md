@@ -4,11 +4,11 @@ Watches one creator's Instagram Stories, archives each link-sticker URL and its 
 
 ## Job feed export (optional)
 
-When enabled, the monitor writes `feed/listings.json` after each poll cycle. If the content changed, it commits only that file and pushes it to `origin`'s default branch with the git credentials already on this machine, so other job trackers can read the feed from GitHub. The export is off by default, and with it off the monitor behaves as before.
+When enabled, the monitor builds `feed/listings.json` after each poll cycle. It fetches `origin`'s default branch, and if the file differs from the one there, pushes a new commit on top that changes only that file. It uses the git credentials already on this machine, so other job trackers can read the feed from GitHub. It never commits to, checks out, or writes files in your working copy, and never force-pushes. The export is off by default, and with it off the monitor behaves as before.
 
 ### Turn it on
 
-1. Run the monitor from a git clone whose `origin` is the GitHub repo, checked out on the default branch.
+1. Run the monitor from a git clone whose `origin` is the GitHub repo. Any checked-out branch works.
 2. Confirm `git push` works from that clone without a prompt (Git Credential Manager or an SSH key).
 3. Add to `.env`:
 
@@ -22,7 +22,7 @@ When enabled, the monitor writes `feed/listings.json` after each poll cycle. If 
 
 ### What the feed contains
 
-Only links the classifier marks as **Job Listing**. Events, forms, programs, job-search pages, resources and unknown links stay out. Each job URL appears once, newest first, and drops out `FEED_RETENTION_DAYS` days after its first sighting.
+Only links the classifier marks as **Job Listing**. Events, forms, programs, job-search pages, resources and unknown links stay out. Each job URL appears once, newest first, and drops out `FEED_RETENTION_DAYS` days after its earliest sighting, across every link that led to it.
 
 ```json
 {
@@ -48,12 +48,12 @@ Anyone can read `feed/listings.json` and its commit history in a public reposito
 
 The monitor logs `Feed export skipped: ...` and tries again next cycle when:
 
-- the clone is on another branch (it writes the file but does not commit it);
-- the default branch has unpushed commits besides the feed (push them yourself; the monitor never publishes them).
+- `origin`'s default branch is unknown (run `git remote set-head origin --auto`);
+- someone pushed to the default branch between the fetch and the push, so GitHub rejected the push. The next cycle fetches again and rebuilds the commit.
 
-If the archive query returns 1000 rows (its fixed cap), the monitor logs `Feed export: feed query hit the 1000-row cap; ...` each cycle. Listings first seen longest ago may be missing from the feed.
+If the archive query returns 1000 rows (its fixed cap), the monitor logs `Feed export: feed query hit the 1000-row cap; ...` each cycle. The least recently seen listings may be missing from the feed.
 
-A failed push, such as no network or new commits on GitHub, logs `Feed export failed; it will retry next cycle`. After new commits land on GitHub, run `git pull` and the next cycle pushes.
+A failed fetch or push, such as no network, logs `Feed export failed; it will retry next cycle`. No manual `git pull` is needed.
 
 ### Recommended poll interval
 

@@ -197,19 +197,16 @@ test("archived listings age out of the feed after the retention window", async (
   assert.equal(buildFeed(jobs, { ...feedOptions, retentionDays: 30, now: new Date(Date.now() + 15 * DAY_MS) }).length, 2);
 });
 
-test("listJobs firstSeenSince keeps only listings first seen at or after the cutoff", async (t) => {
-  const directory = await mkdtemp(path.join(tmpdir(), "feed-since-"));
-  const archive = await seedArchive(directory);
-  t.after(async () => {
-    await archive.close();
-    await rm(directory, { recursive: true, force: true });
-  });
-  const past = new Date(Date.now() - DAY_MS).toISOString();
-  const future = new Date(Date.now() + DAY_MS).toISOString();
-  const all = archive.listJobs("", "all", 1000, "Job Listing");
-  assert.ok(all.length > 0);
-  assert.equal(archive.listJobs("", "all", 1000, "Job Listing", past).length, all.length);
-  assert.equal(archive.listJobs("", "all", 1000, "Job Listing", future).length, 0);
+test("retention uses the earliest sighting across all rows for one job URL", () => {
+  const now = new Date("2026-11-20T00:00:00.000Z");
+  const old = summary({ canonicalUrl: "https://bit.ly/a", finalUrl: "https://jobs.example.com/a", firstSeenAt: "2026-11-01T00:00:00.000Z" });
+  const recent = summary({ canonicalUrl: "https://tinyurl.com/a", finalUrl: "https://jobs.example.com/a", firstSeenAt: "2026-11-18T00:00:00.000Z" });
+  assert.deepEqual(buildFeed([recent, old], { ...feedOptions, now }), []);
+  assert.deepEqual(buildFeed([old, recent], { ...feedOptions, now }), []);
+
+  const both = buildFeed([recent, summary({ ...old, firstSeenAt: "2026-11-10T00:00:00.000Z" })], { ...feedOptions, now });
+  assert.equal(both.length, 1);
+  assert.equal(both[0].date_posted, Date.parse("2026-11-10T00:00:00.000Z") / 1000);
 });
 
 test("maps opportunity types to levels and omits unknown levels and terms", () => {
@@ -234,7 +231,7 @@ async function setupRepository(directory) {
   await git(seed, "commit", "--quiet", "-m", "init");
   await git(seed, "push", "--quiet", remote, "main");
   await git(directory, "clone", "--quiet", remote, work);
-  return { remote, work };
+  return { remote, seed, work };
 }
 
 async function gitFixture(t, prefix) {
@@ -251,15 +248,14 @@ async function gitFixture(t, prefix) {
 
 const commitCount = (repository) => git(repository, "rev-list", "--count", "main");
 
-test("commits and pushes the feed only when its content changes", async (t) => {
+test("publishes the feed only when its content changes", async (t) => {
   const { archive, options, remote, work } = await gitFixture(t, "feed-git-");
 
   const first = await exportFeed(archive, options);
   assert.deepEqual(first, { enabled: true, listings: 2, fileChanged: true, committed: true, pushed: true });
   assert.equal(await commitCount(remote), "2");
-  assert.deepEqual(await git(remote, "show", "--name-only", "--format=", "main"), FEED_PATH);
+  assert.equal(await git(remote, "show", "--name-only", "--format=", "main"), FEED_PATH);
   const published = JSON.parse(await git(remote, "show", `main:${FEED_PATH}`));
-  assert.deepEqual(published, JSON.parse(await readFile(path.join(work, FEED_PATH), "utf8")));
   assert.deepEqual(published.map((listing) => listing.url), [
     "https://job-boards.greenhouse.io/acme/jobs/456",
     "https://jobs.example.com/role/123"
@@ -268,70 +264,104 @@ test("commits and pushes the feed only when its content changes", async (t) => {
   const second = await exportFeed(archive, options);
   assert.deepEqual(second, { enabled: true, listings: 2, fileChanged: false, committed: false, pushed: false });
   assert.equal(await commitCount(remote), "2");
-  assert.equal(await commitCount(work), "2");
 
   await addInternship(archive, 789);
   const third = await exportFeed(archive, options);
   assert.deepEqual(third, { enabled: true, listings: 3, fileChanged: true, committed: true, pushed: true });
   assert.equal(await commitCount(remote), "3");
+
+  assert.equal(await commitCount(work), "1");
+  assert.equal(await git(work, "status", "--porcelain"), "");
+  await assert.rejects(stat(path.join(work, "feed")), { code: "ENOENT" });
 });
 
-test("commits only the feed file and leaves other staged work staged", async (t) => {
-  const { archive, options, remote, work } = await gitFixture(t, "feed-staged-");
-  await writeFile(path.join(work, "notes.txt"), "work in progress\n");
-  await git(work, "add", "notes.txt");
+test("publishes on top of an origin that is ahead of the local clone", async (t) => {
+  const { archive, options, remote, seed, work } = await gitFixture(t, "feed-ahead-");
+  await writeFile(path.join(seed, "other.txt"), "upstream work\n");
+  await git(seed, "add", "other.txt");
+  await git(seed, "commit", "--quiet", "-m", "upstream");
+  await git(seed, "push", "--quiet", remote, "main");
+  const upstream = await git(remote, "rev-parse", "main");
+  const localHead = await git(work, "rev-parse", "HEAD");
 
   const result = await exportFeed(archive, options);
   assert.equal(result.pushed, true);
+  assert.equal(await commitCount(remote), "3");
+  assert.equal(await git(remote, "rev-parse", "main~1"), upstream);
+  assert.equal(await git(remote, "show", "main:other.txt"), "upstream work");
   assert.equal(await git(remote, "show", "--name-only", "--format=", "main"), FEED_PATH);
-  assert.equal(await git(work, "diff", "--cached", "--name-only"), "notes.txt");
+  assert.equal(await git(work, "rev-parse", "HEAD"), localHead);
+  assert.equal(await git(work, "status", "--porcelain"), "");
 });
 
-test("never pushes unpushed commits other than the feed", async (t) => {
-  const { archive, options, remote, work } = await gitFixture(t, "feed-unpushed-");
+test("leaves the checkout alone on any branch, with staged and unpushed work", async (t) => {
+  const { archive, options, remote, work } = await gitFixture(t, "feed-checkout-");
+  await git(work, "checkout", "--quiet", "-b", "feature");
   await writeFile(path.join(work, "local.txt"), "not ready\n");
   await git(work, "add", "local.txt");
   await git(work, "commit", "--quiet", "-m", "local change");
+  await writeFile(path.join(work, "staged.txt"), "staged\n");
+  await git(work, "add", "staged.txt");
+  const head = await git(work, "rev-parse", "HEAD");
 
   const result = await exportFeed(archive, options);
-  assert.equal(result.committed, true);
-  assert.equal(result.pushed, false);
-  assert.match(result.skipped, /unpushed commits besides feed\/listings\.json/);
-  assert.equal(await commitCount(remote), "1");
-});
-
-test("writes the file but does not commit when the checkout is not on the default branch", async (t) => {
-  const { archive, options, remote, work } = await gitFixture(t, "feed-branch-");
-  await git(work, "checkout", "--quiet", "-b", "feature");
-
-  const result = await exportFeed(archive, options);
-  assert.equal(result.fileChanged, true);
-  assert.equal(result.committed, false);
-  assert.match(result.skipped, /checkout is on feature, not main/);
-  assert.equal(await git(work, "status", "--porcelain"), "?? feed/");
-  assert.equal(await commitCount(remote), "1");
-});
-
-test("retries a failed push on the next cycle without a new commit", async (t) => {
-  const { archive, options, remote, work } = await gitFixture(t, "feed-retry-");
-  const offline = `${remote}-offline`;
-  await rename(remote, offline);
-  await assert.rejects(exportFeed(archive, options), /git push failed/);
-  assert.equal(await commitCount(work), "2");
-  await rename(offline, remote);
-
-  const retry = await exportFeed(archive, options);
-  assert.deepEqual(retry, { enabled: true, listings: 2, fileChanged: false, committed: false, pushed: true });
+  assert.equal(result.pushed, true);
+  assert.equal(await git(work, "rev-parse", "HEAD"), head);
+  assert.equal(await git(work, "branch", "--show-current"), "feature");
+  assert.equal(await git(work, "status", "--porcelain"), "A  staged.txt");
+  assert.equal(await git(remote, "show", "--name-only", "--format=", "main"), FEED_PATH);
   assert.equal(await commitCount(remote), "2");
 });
 
-test("disabled export leaves the archive, files and git untouched", async (t) => {
+test("a push race is logged as skipped and the next cycle publishes from a fresh fetch", async (t) => {
+  const { archive, options, remote, seed } = await gitFixture(t, "feed-race-");
+  await writeFile(path.join(seed, "raced.txt"), "landed mid-publish\n");
+  await git(seed, "add", "raced.txt");
+  await git(seed, "commit", "--quiet", "-m", "raced");
+  await git(seed, "push", "--quiet", remote, "HEAD:refs/heads/raced");
+  const raced = await git(remote, "rev-parse", "raced");
+  const hook = path.join(remote, "hooks", "pre-receive");
+  await writeFile(hook, `#!/bin/sh\nunset GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES\ngit update-ref refs/heads/main ${raced}\n`, { mode: 0o755 });
+
+  const first = await exportFeed(archive, options);
+  assert.equal(first.pushed, false);
+  assert.equal(first.committed, true);
+  assert.match(first.skipped, /retrying next cycle/);
+  assert.equal(await git(remote, "rev-parse", "main"), raced);
+
+  await rm(hook);
+  const second = await exportFeed(archive, options);
+  assert.equal(second.pushed, true);
+  assert.equal(await git(remote, "rev-parse", "main~1"), raced);
+  assert.equal(await git(remote, "show", "--name-only", "--format=", "main"), FEED_PATH);
+});
+
+test("a failed fetch throws and the next cycle publishes", async (t) => {
+  const { archive, options, remote } = await gitFixture(t, "feed-retry-");
+  const offline = `${remote}-offline`;
+  await rename(remote, offline);
+  await assert.rejects(exportFeed(archive, options), /git fetch failed/);
+  await rename(offline, remote);
+
+  const retry = await exportFeed(archive, options);
+  assert.deepEqual(retry, { enabled: true, listings: 2, fileChanged: true, committed: true, pushed: true });
+  assert.equal(await commitCount(remote), "2");
+});
+
+test("warns when the archive query returns the 1000-row cap", async (t) => {
+  const { options } = await gitFixture(t, "feed-cap-");
+  const rows = Array.from({ length: 1000 }, (_, index) => summary({ finalUrl: `https://jobs.example.com/${index}`, firstSeenAt: new Date().toISOString() }));
+  const result = await exportFeed({ listJobs: () => rows }, options);
+  assert.equal(result.listings, 1000);
+  assert.match(result.warning, /1000-row cap/);
+});
+
+test("disabled export leaves the archive and git untouched", async (t) => {
   const { options, work } = await gitFixture(t, "feed-disabled-");
   const untouchedArchive = { listJobs: () => assert.fail("disabled export must not read the archive") };
 
   const result = await exportFeed(untouchedArchive, { ...options, enabled: false });
   assert.deepEqual(result, { enabled: false, listings: 0, fileChanged: false, committed: false, pushed: false });
-  await assert.rejects(stat(path.join(work, "feed")), { code: "ENOENT" });
   assert.equal(await git(work, "status", "--porcelain"), "");
   assert.equal(await commitCount(work), "1");
 });
