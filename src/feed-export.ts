@@ -129,7 +129,7 @@ async function git(cwd: string, args: string[], options: { input?: string; env?:
   }
 }
 
-const PUSH_RACE = /non-fast-forward|fetch first|\[(remote )?rejected\]/;
+const PUSH_RACE = /non-fast-forward|fetch first|cannot lock ref/;
 
 // Publishes the feed as a new commit on top of the freshly fetched default
 // branch, built with git plumbing. The working checkout, its HEAD, index and

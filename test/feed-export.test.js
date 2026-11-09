@@ -314,14 +314,13 @@ test("leaves the checkout alone on any branch, with staged and unpushed work", a
 });
 
 test("a push race is logged as skipped and the next cycle publishes from a fresh fetch", async (t) => {
-  const { archive, options, remote, seed } = await gitFixture(t, "feed-race-");
+  const { archive, options, remote, seed, work } = await gitFixture(t, "feed-race-");
   await writeFile(path.join(seed, "raced.txt"), "landed mid-publish\n");
   await git(seed, "add", "raced.txt");
   await git(seed, "commit", "--quiet", "-m", "raced");
-  await git(seed, "push", "--quiet", remote, "HEAD:refs/heads/raced");
-  const raced = await git(remote, "rev-parse", "raced");
-  const hook = path.join(remote, "hooks", "pre-receive");
-  await writeFile(hook, `#!/bin/sh\nunset GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES\ngit update-ref refs/heads/main ${raced}\n`, { mode: 0o755 });
+  const raced = await git(seed, "rev-parse", "HEAD");
+  const hook = path.join(work, ".git", "hooks", "pre-push");
+  await writeFile(hook, `#!/bin/sh\nunset $(env | sed -n 's/^\\(GIT_[A-Z_]*\\)=.*/\\1/p')\ngit -C "${seed}" push --quiet "${remote}" HEAD:refs/heads/main\n`, { mode: 0o755 });
 
   const first = await exportFeed(archive, options);
   assert.equal(first.pushed, false);
@@ -334,6 +333,12 @@ test("a push race is logged as skipped and the next cycle publishes from a fresh
   assert.equal(second.pushed, true);
   assert.equal(await git(remote, "rev-parse", "main~1"), raced);
   assert.equal(await git(remote, "show", "--name-only", "--format=", "main"), FEED_PATH);
+});
+
+test("a hook-declined push throws instead of being treated as a race", async (t) => {
+  const { archive, options, remote } = await gitFixture(t, "feed-declined-");
+  await writeFile(path.join(remote, "hooks", "pre-receive"), "#!/bin/sh\necho protected >&2\nexit 1\n", { mode: 0o755 });
+  await assert.rejects(exportFeed(archive, options), /git push failed/);
 });
 
 test("a failed fetch throws and the next cycle publishes", async (t) => {
