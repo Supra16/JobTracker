@@ -157,7 +157,8 @@ export async function exportFeed(
 ): Promise<FeedExportResult> {
   if (!options.enabled) return { enabled: false, listings: 0, fileChanged: false, committed: false, pushed: false };
 
-  const listings = buildFeed(archive.listJobs("", "all", 1000, "Job Listing"), options);
+  const cutoff = new Date((options.now ?? new Date()).getTime() - options.retentionDays * DAY_MS).toISOString();
+  const listings = buildFeed(archive.listJobs("", "all", 1000, "Job Listing", cutoff), options);
   const content = serializeFeed(listings);
   const filePath = path.join(options.repoDirectory, ...FEED_PATH.split("/"));
   const current = await readFile(filePath, "utf8").catch((error: NodeJS.ErrnoException) => {

@@ -350,7 +350,7 @@ export class JobArchive {
     return number(this.one("SELECT id FROM job_links WHERE canonical_url = ?", [canonicalUrl])?.id ?? 0);
   }
 
-  listJobs(search = "", fetchStatus = "all", limit = 250, contentKind = "all"): ArchivedJobSummary[] {
+  listJobs(search = "", fetchStatus = "all", limit = 250, contentKind = "all", firstSeenSince = ""): ArchivedJobSummary[] {
     const clauses: string[] = [];
     const parameters: SqlValue[] = [];
     const cleanedSearch = search.trim();
@@ -368,6 +368,10 @@ export class JobArchive {
     if (contentKind !== "all") {
       clauses.push("c.content_kind = ?");
       parameters.push(contentKind);
+    }
+    if (firstSeenSince) {
+      clauses.push("j.first_seen_at >= ?");
+      parameters.push(firstSeenSince);
     }
     parameters.push(Math.min(Math.max(limit, 1), 1000));
 
