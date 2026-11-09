@@ -51,6 +51,8 @@ The monitor logs `Feed export skipped: ...` and tries again next cycle when:
 - the clone is on another branch (it writes the file but does not commit it);
 - the default branch has unpushed commits besides the feed (push them yourself; the monitor never publishes them).
 
+If the archive query returns 1000 rows (its fixed cap), the monitor logs `Feed export: feed query hit the 1000-row cap; ...` each cycle. Listings first seen longest ago may be missing from the feed.
+
 A failed push, such as no network or new commits on GitHub, logs `Feed export failed; it will retry next cycle`. After new commits land on GitHub, run `git pull` and the next cycle pushes.
 
 ### Recommended poll interval
