@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { AppConfig, FilterConfig } from "./types.js";
+import type { AppConfig, FeedExportSettings, FilterConfig } from "./types.js";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -9,12 +9,25 @@ function required(name: string): string {
   return value;
 }
 
-function booleanValue(name: string, fallback: boolean): boolean {
-  const value = process.env[name]?.trim().toLowerCase();
+function booleanValue(name: string, fallback: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env[name]?.trim().toLowerCase();
   if (!value) return fallback;
   if (value === "true") return true;
   if (value === "false") return false;
   throw new Error(`${name} must be true or false`);
+}
+
+const DEFAULT_FEED_RETENTION_DAYS = 14;
+
+// Off unless FEED_EXPORT_ENABLED=true. FEED_RETENTION_DAYS is validated only when the export is on.
+export function parseFeedExportSettings(env: NodeJS.ProcessEnv): FeedExportSettings {
+  const enabled = booleanValue("FEED_EXPORT_ENABLED", false, env);
+  if (!enabled) return { enabled, retentionDays: DEFAULT_FEED_RETENTION_DAYS };
+  const retentionDays = Number(env.FEED_RETENTION_DAYS?.trim() || DEFAULT_FEED_RETENTION_DAYS);
+  if (!Number.isInteger(retentionDays) || retentionDays < 1) {
+    throw new Error("FEED_RETENTION_DAYS must be a whole number of at least 1");
+  }
+  return { enabled, retentionDays };
 }
 
 export async function loadConfig(): Promise<AppConfig> {
@@ -44,6 +57,7 @@ export async function loadConfig(): Promise<AppConfig> {
     artifactDirectory: path.join(projectRoot, "data", "artifacts"),
     databaseFile: path.join(projectRoot, "data", "jobs.sqlite"),
     dashboardPort,
-    filters
+    filters,
+    feedExport: parseFeedExportSettings(process.env)
   };
 }

@@ -22,6 +22,12 @@ export interface AppConfig {
   databaseFile: string;
   dashboardPort: number;
   filters: FilterConfig;
+  feedExport: FeedExportSettings;
+}
+
+export interface FeedExportSettings {
+  enabled: boolean;
+  retentionDays: number;
 }
 
 export interface StoryObservation {

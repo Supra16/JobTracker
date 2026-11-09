@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { JobArchive } from "./archive.js";
 import { loadConfig } from "./config.js";
 import { startDashboard } from "./dashboard.js";
+import { exportFeed } from "./feed-export.js";
 import { classifyJob } from "./filter.js";
 import { collectCurrentStories, openInstagram } from "./instagram.js";
 import { classifyJobPresentation } from "./job-classification.js";
@@ -22,6 +23,9 @@ const telegramEnabled = Boolean(config.telegramBotToken && config.telegramChatId
 console.log(`Telegram alerts: ${telegramEnabled ? "enabled" : "disabled (token or chat ID missing)"}`);
 if (telegramEnabled) {
   console.log(`Telegram alert mode: ${config.alertAllNewLinks ? "all new Story links" : "matching filters only"}`);
+}
+if (config.feedExport.enabled) {
+  console.log(`Feed export: enabled (${config.feedExport.retentionDays}-day retention)`);
 }
 let shuttingDown = false;
 
@@ -117,6 +121,22 @@ async function runCycle(): Promise<void> {
   }
 }
 
+async function exportFeedAfterCycle(): Promise<void> {
+  try {
+    const result = await exportFeed(archive, {
+      ...config.feedExport,
+      creatorUsername: config.creatorUsername,
+      repoDirectory: process.cwd()
+    });
+    if (result.warning) console.warn(`Feed export: ${result.warning}`);
+    if (result.skipped) console.warn(`Feed export skipped: ${result.skipped}`);
+    else if (result.pushed) console.log(`Feed export: pushed ${result.listings} listing(s)`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Feed export failed; it will retry next cycle: ${message}`);
+  }
+}
+
 console.log("Archive monitor started. Press Ctrl+C for a clean shutdown.");
 while (!shuttingDown) {
   try {
@@ -133,5 +153,6 @@ while (!shuttingDown) {
       break;
     }
   }
+  if (!shuttingDown) await exportFeedAfterCycle();
   if (!shuttingDown) await sleep(config.pollIntervalMs);
 }
