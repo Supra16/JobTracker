@@ -13,6 +13,7 @@ export const FEED_PATH = "feed/listings.json";
 const REMOTE = "origin";
 const COMMIT_MESSAGE = "chore(feed): update listings.json";
 const GIT_TIMEOUT_MS = 120_000;
+const LIST_JOBS_CAP = 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // One entry in the listings.json shape the downstream job tracker reads.
@@ -53,6 +54,7 @@ export interface FeedExportResult {
   committed: boolean;
   pushed: boolean;
   skipped?: string;
+  warning?: string;
 }
 
 const LEVELS: Partial<Record<string, FeedListing["level"]>> = {
@@ -79,9 +81,13 @@ function toListing(job: FeedSourceJob, url: string, datePosted: number, source: 
   return listing;
 }
 
+function retentionCutoff(options: { retentionDays: number; now?: Date }): number {
+  return (options.now ?? new Date()).getTime() - options.retentionDays * DAY_MS;
+}
+
 // Job listings first seen inside the retention window, one per job URL, newest first.
 export function buildFeed(jobs: FeedSourceJob[], options: FeedBuildOptions): FeedListing[] {
-  const cutoff = (options.now ?? new Date()).getTime() - options.retentionDays * DAY_MS;
+  const cutoff = retentionCutoff(options);
   const source = `instagram:${options.creatorUsername}`;
   const byUrl = new Map<string, FeedListing>();
   for (const job of jobs) {
@@ -157,8 +163,11 @@ export async function exportFeed(
 ): Promise<FeedExportResult> {
   if (!options.enabled) return { enabled: false, listings: 0, fileChanged: false, committed: false, pushed: false };
 
-  const cutoff = new Date((options.now ?? new Date()).getTime() - options.retentionDays * DAY_MS).toISOString();
-  const listings = buildFeed(archive.listJobs("", "all", 1000, "Job Listing", cutoff), options);
+  const jobs = archive.listJobs("", "all", LIST_JOBS_CAP, "Job Listing", new Date(retentionCutoff(options)).toISOString());
+  const listings = buildFeed(jobs, options);
+  const warning = jobs.length >= LIST_JOBS_CAP
+    ? `feed query hit the ${LIST_JOBS_CAP}-row cap; the oldest-seen listings in the window may be missing`
+    : undefined;
   const content = serializeFeed(listings);
   const filePath = path.join(options.repoDirectory, ...FEED_PATH.split("/"));
   const current = await readFile(filePath, "utf8").catch((error: NodeJS.ErrnoException) => {
@@ -170,5 +179,6 @@ export async function exportFeed(
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, content);
   }
-  return { enabled: true, listings: listings.length, fileChanged, ...await publishFeed(options.repoDirectory) };
+  const published = await publishFeed(options.repoDirectory);
+  return { enabled: true, listings: listings.length, fileChanged, ...published, ...(warning ? { warning } : {}) };
 }

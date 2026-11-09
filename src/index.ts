@@ -128,6 +128,7 @@ async function exportFeedAfterCycle(): Promise<void> {
       creatorUsername: config.creatorUsername,
       repoDirectory: process.cwd()
     });
+    if (result.warning) console.warn(`Feed export: ${result.warning}`);
     if (result.skipped) console.warn(`Feed export skipped: ${result.skipped}`);
     else if (result.pushed) console.log(`Feed export: pushed ${result.listings} listing(s)`);
   } catch (error) {

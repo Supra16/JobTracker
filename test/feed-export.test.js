@@ -197,6 +197,21 @@ test("archived listings age out of the feed after the retention window", async (
   assert.equal(buildFeed(jobs, { ...feedOptions, retentionDays: 30, now: new Date(Date.now() + 15 * DAY_MS) }).length, 2);
 });
 
+test("listJobs firstSeenSince keeps only listings first seen at or after the cutoff", async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), "feed-since-"));
+  const archive = await seedArchive(directory);
+  t.after(async () => {
+    await archive.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const past = new Date(Date.now() - DAY_MS).toISOString();
+  const future = new Date(Date.now() + DAY_MS).toISOString();
+  const all = archive.listJobs("", "all", 1000, "Job Listing");
+  assert.ok(all.length > 0);
+  assert.equal(archive.listJobs("", "all", 1000, "Job Listing", past).length, all.length);
+  assert.equal(archive.listJobs("", "all", 1000, "Job Listing", future).length, 0);
+});
+
 test("maps opportunity types to levels and omits unknown levels and terms", () => {
   const levels = ["New Grad", "Internship", "Co-op", "Entry Level", "Full-Time", "Other"].map((opportunityType, index) =>
     buildFeed([summary({ finalUrl: `https://jobs.example.com/${index}`, opportunityType })], { ...feedOptions, now: new Date("2026-11-02T00:00:00.000Z") })[0].level
