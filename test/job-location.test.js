@@ -179,3 +179,12 @@ test("fetchJobPage makes no extra request for other sites or pages with a locati
   assert.deepEqual((await fetchJobPage("https://jobs.ashbyhq.com/acme/456")).locations, []);
   assert.equal(requested.length, 2);
 });
+
+test("bounds oversized location data from a page", () => {
+  const started = Date.now();
+  assert.deepEqual(formatLocationText(`${" ".repeat(50_000)}x`), []);
+  assert.equal(formatLocation({ locality: `Austin${",".repeat(50_000)}`, region: "TX" }), "Austin, TX");
+  assert.ok(Date.now() - started < 1000);
+  const places = Array.from({ length: 50 }, (_, index) => place(postal({ addressLocality: `Town ${index}`, addressRegion: "TX" })));
+  assert.equal(locationsOf(jsonLdPage(posting({ jobLocation: places }))).length, 20);
+});

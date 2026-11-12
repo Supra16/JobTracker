@@ -27,6 +27,10 @@ const US_NAMES = new Set(["us", "u.s.", "usa", "u.s.a.", "united states", "unite
 // Countries whose capital shares the country's name, so "Singapore" alone is a city.
 const CITY_STATES = new Set(["Singapore", "Hong Kong", "Luxembourg", "Monaco"]);
 const REMOTE = /\bremote\b/i;
+// Page data is untrusted: bound the text each regex sees and the list a page yields.
+const MAX_FIELD_LENGTH = 200;
+const MAX_TEXT_LENGTH = 1000;
+const MAX_LOCATIONS = 20;
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
 const countryByCode = new Map<string, string>();
@@ -70,6 +74,7 @@ function countryFromField(value: string): string | undefined {
 // Drops parentheticals and internal suffixes such as "Englewood, CO - CO_RMN".
 function cleanSegment(value: string): string {
   return value
+    .slice(0, MAX_FIELD_LENGTH)
     .replace(/\([^)]*\)/g, " ")
     .replace(/\s+[-–]\s+[^\s,]*[_\d][^\s,]*$/, "")
     .replace(/\s+/g, " ")
@@ -121,12 +126,12 @@ export function formatLocation(address: AddressParts): string | null {
 // Free text that may list several places, as in "San Francisco, CA • New York, NY".
 export function formatLocationText(text: string): string[] {
   return uniqueLocations(
-    text.split(/\s*(?:•|;|\|)\s*|\s+or\s+/).map((segment) => formatLocation({ locality: segment }))
+    text.slice(0, MAX_TEXT_LENGTH).split(/\s*(?:•|;|\|)\s*|\s+or\s+/).map((segment) => formatLocation({ locality: segment }))
   );
 }
 
 export function uniqueLocations(values: Array<string | null | undefined>): string[] {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+  return [...new Set(values.filter((value): value is string => Boolean(value)))].slice(0, MAX_LOCATIONS);
 }
 
 function stringValue(value: unknown): string {
