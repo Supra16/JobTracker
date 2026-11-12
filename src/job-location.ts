@@ -119,7 +119,7 @@ export function formatLocation(address: AddressParts): string | null {
   }
   if (!city) city = countryTokens.find((name) => CITY_STATES.has(name));
   if (!city) return null;
-  if (country && country !== "US") return `${city}, ${country}`;
+  if (country && country !== "US" && country !== city) return `${city}, ${country}`;
   return state ? `${city}, ${state}` : city;
 }
 

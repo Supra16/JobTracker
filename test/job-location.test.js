@@ -81,7 +81,7 @@ test("drops a location that names only a country or no city", () => {
   assert.deepEqual(formatLocationText("San Francisco Bay Area"), []);
   assert.equal(formatLocation({ locality: "CA", country: "US" }), null);
   // A city-state names its own city.
-  assert.deepEqual(locationsOf(jsonLdPage(posting({ jobLocation: place(postal({ addressLocality: "Singapore, Singapore" })) }))), ["Singapore, Singapore"]);
+  assert.deepEqual(locationsOf(jsonLdPage(posting({ jobLocation: place(postal({ addressLocality: "Singapore, Singapore" })) }))), ["Singapore"]);
 });
 
 test("a page with no location yields none", () => {
