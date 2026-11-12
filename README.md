@@ -38,7 +38,7 @@ Only links the classifier marks as **Job Listing**. Events, forms, programs, job
 }
 ```
 
-`locations` comes from the job page when the monitor fetched it: the page's schema.org JobPosting location (JSON-LD or microdata), or, for Greenhouse job boards, the board's public job API. Each entry is `City, ST` in the US, `City, Country` elsewhere, or `Remote`. A location that names only a country is left out, and the list is empty when the page gave none or was fetched before the monitor recorded locations.
+`locations` comes from the job page when the monitor fetched it: the page's schema.org JobPosting location (JSON-LD or microdata), or, for Greenhouse job boards, the board's public job API. Each entry is `City, ST` in the US, `City, Country` elsewhere, or `Remote`. A city with no state or country appears alone when the page gives it as its own address field. A location that names only a country is left out, and the list is empty when the page gave none or was fetched before the monitor recorded locations.
 
 `date_posted` is the first sighting in Unix seconds. `terms` and `level` appear only when the classifier knows them. `source` comes from `INSTAGRAM_CREATOR_USERNAME`.
 
