@@ -49,6 +49,8 @@ export interface JobPage {
   headingTitle?: string;
   documentTitle?: string;
   structuredData?: PageStructuredData[];
+  // Where the job is, as "City, ST", "City, Country" or "Remote".
+  locations?: string[];
 }
 
 export interface PageStructuredData {

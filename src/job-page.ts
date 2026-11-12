@@ -1,4 +1,12 @@
 import * as cheerio from "cheerio";
+import {
+  formatLocation,
+  formatLocationText,
+  greenhouseJobApiUrl,
+  greenhouseJobLocations,
+  jobPostingLocations,
+  uniqueLocations
+} from "./job-location.js";
 import type { JobPage, PageStructuredData } from "./types.js";
 
 const TRACKING_PARAMETERS = new Set([
@@ -49,7 +57,8 @@ function textValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function structuredRecords(value: unknown): PageStructuredData[] {
+// Collects JobPosting locations into `locations` while it walks the JSON-LD.
+function structuredRecords(value: unknown, locations: string[] = []): PageStructuredData[] {
   const records: PageStructuredData[] = [];
   const visit = (candidate: unknown): void => {
     if (Array.isArray(candidate)) {
@@ -71,6 +80,7 @@ function structuredRecords(value: unknown): PageStructuredData[] {
     const employmentType = Array.isArray(employment)
       ? employment.filter((item): item is string => typeof item === "string")
       : typeof employment === "string" ? [employment] : undefined;
+    if (types.some((type) => type.toLowerCase() === "jobposting")) locations.push(...jobPostingLocations(object));
     for (const type of types) {
       records.push({
         type,
@@ -89,17 +99,38 @@ function structuredRecords(value: unknown): PageStructuredData[] {
   return records.slice(0, 100);
 }
 
+// schema.org microdata: itemprop="jobLocation" elements and their address fields.
+function microdataLocations($: cheerio.CheerioAPI): string[] {
+  return uniqueLocations($('[itemprop="jobLocation"]').toArray().flatMap((element) => {
+    const place = $(element);
+    const field = (name: string): string => {
+      const node = place.find(`[itemprop="${name}"]`).first();
+      return (node.attr("content") ?? node.text()).replace(/\s+/g, " ").trim();
+    };
+    const fromFields = formatLocation({
+      locality: field("addressLocality"),
+      region: field("addressRegion"),
+      country: field("addressCountry")
+    });
+    if (fromFields) return [fromFields];
+    const formatted = place.find("[formattedaddress]").first().attr("formattedaddress");
+    return formatLocationText(formatted ?? place.text().replace(/\s+/g, " ").trim());
+  }));
+}
+
 export function parseJobPageHtml(html: string, requestedUrl: string, finalUrl = requestedUrl): JobPage {
   const $ = cheerio.load(html.slice(0, 3_000_000));
+  const jsonLdLocations: string[] = [];
   const structuredData = $('script[type="application/ld+json"]')
     .toArray()
     .flatMap((script) => {
       try {
-        return structuredRecords(JSON.parse($(script).text()));
+        return structuredRecords(JSON.parse($(script).text()), jsonLdLocations);
       } catch {
         return [];
       }
     });
+  const locations = jsonLdLocations.length ? uniqueLocations(jsonLdLocations) : microdataLocations($);
   const openGraphTitle = $('meta[property="og:title"]').attr("content")?.trim() ?? "";
   const headingTitle = $("h1").first().text().replace(/\s+/g, " ").trim();
   const documentTitle = $("title").first().text().replace(/\s+/g, " ").trim();
@@ -118,8 +149,31 @@ export function parseJobPageHtml(html: string, requestedUrl: string, finalUrl = 
     openGraphTitle,
     headingTitle,
     documentTitle,
-    structuredData
+    structuredData,
+    locations
   };
+}
+
+// Greenhouse boards publish no structured location, so ask the board's job API.
+// Any failure leaves the page as it was.
+async function withGreenhouseLocations(page: JobPage): Promise<JobPage> {
+  if (page.locations?.length) return page;
+  const apiUrl = greenhouseJobApiUrl(page.finalUrl) ?? greenhouseJobApiUrl(page.requestedUrl);
+  if (!apiUrl) return page;
+  try {
+    const response = await fetch(apiUrl, {
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; PersonalJobLinkMonitor/1.0)",
+        Accept: "application/json"
+      }
+    });
+    if (!response.ok) return page;
+    const locations = greenhouseJobLocations(await response.json());
+    return locations.length ? { ...page, locations } : page;
+  } catch {
+    return page;
+  }
 }
 
 export async function fetchJobPage(rawUrl: string): Promise<JobPage> {
@@ -142,11 +196,12 @@ export async function fetchJobPage(rawUrl: string): Promise<JobPage> {
     if (!contentType.includes("text/html")) {
       throw new Error(`Unsupported content type: ${contentType}`);
     }
-    return parseJobPageHtml(
+    const page = parseJobPageHtml(
       await response.text(),
       canonical,
       canonicalizeUrl(response.url) ?? canonical
     );
+    return await withGreenhouseLocations(page);
   } catch (error) {
     return {
       requestedUrl: canonical,

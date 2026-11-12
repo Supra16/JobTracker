@@ -29,7 +29,7 @@ Only links the classifier marks as **Job Listing**. Events, forms, programs, job
   "company_name": "Acme",
   "title": "Software Engineering Intern, Fall 2026",
   "url": "https://job-boards.greenhouse.io/acme/jobs/456",
-  "locations": [],
+  "locations": ["San Francisco, CA", "Remote"],
   "date_posted": 1793664000,
   "active": true,
   "terms": ["Fall 2026"],
@@ -38,11 +38,13 @@ Only links the classifier marks as **Job Listing**. Events, forms, programs, job
 }
 ```
 
+`locations` comes from the job page when the monitor fetched it: the page's schema.org JobPosting location (JSON-LD or microdata), or, for Greenhouse job boards, the board's public job API. Each entry is `City, ST` in the US, `City, Country` elsewhere, or `Remote`. A location that names only a country is left out, and the list is empty when the page gave none or was fetched before the monitor recorded locations.
+
 `date_posted` is the first sighting in Unix seconds. `terms` and `level` appear only when the classifier knows them. `source` comes from `INSTAGRAM_CREATOR_USERNAME`.
 
 ### The feed is public in a public repo
 
-Anyone can read `feed/listings.json` and its commit history in a public repository. It holds company, role title, job URL, first-seen time and the creator's handle. It holds no Story screenshots, page text, Instagram session data or Telegram settings.
+Anyone can read `feed/listings.json` and its commit history in a public repository. It holds company, role title, job URL, job location, first-seen time and the creator's handle. It holds no Story screenshots, page text, Instagram session data or Telegram settings.
 
 ### When it does not push
 
