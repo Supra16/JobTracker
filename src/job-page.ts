@@ -114,7 +114,7 @@ function microdataLocations($: cheerio.CheerioAPI): string[] {
     });
     if (fromFields) return [fromFields];
     const formatted = place.find("[formattedaddress]").first().attr("formattedaddress");
-    return formatLocationText(formatted ?? place.text().replace(/\s+/g, " ").trim());
+    return formatted ? formatLocationText(formatted) : [];
   }));
 }
 

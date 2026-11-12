@@ -120,13 +120,14 @@ export function formatLocation(address: AddressParts): string | null {
   if (!city) city = countryTokens.find((name) => CITY_STATES.has(name));
   if (!city) return null;
   if (country && country !== "US") return `${city}, ${country}`;
-  return state ? `${city}, ${state}` : null;
+  return state ? `${city}, ${state}` : city;
 }
 
 // Free text that may list several places, as in "San Francisco, CA • New York, NY".
 export function formatLocationText(text: string): string[] {
   return uniqueLocations(
     text.slice(0, MAX_TEXT_LENGTH).split(/\s*(?:•|;|\|)\s*|\s+or\s+/).map((segment) => formatLocation({ locality: segment }))
+      .filter((location) => location === null || location === "Remote" || location.includes(","))
   );
 }
 

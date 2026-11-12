@@ -109,6 +109,16 @@ test("reads microdata jobLocation when the page has no JSON-LD location", () => 
   assert.deepEqual(locationsOf(withJsonLd), ["Austin, TX"]);
 });
 
+test("microdata without address fields never reads element text", () => {
+  const label = `<!doctype html><html><body><div itemprop="jobLocation"><span>Location: San Francisco, CA</span></div></body></html>`;
+  assert.deepEqual(locationsOf(label), []);
+});
+
+test("a bare city without region or country is kept", () => {
+  assert.equal(formatLocation({ locality: "Berlin" }), "Berlin");
+  assert.deepEqual(locationsOf(jsonLdPage(posting({ jobLocation: place(postal({ addressLocality: "Berlin" })) }))), ["Berlin"]);
+});
+
 const greenhouseHtml = `<!doctype html><html><head><title>Job Application for Associate Counsel at Discord</title></head>
   <body><h1>Associate Counsel</h1><div class="job__location">San Francisco Bay Area or Remote (U.S.)</div></body></html>`;
 // Trimmed from https://boards-api.greenhouse.io/v1/boards/<board>/jobs/<id>.
