@@ -34,7 +34,7 @@ export type FeedSourceJob = Pick<
   ArchivedJobSummary,
   "canonicalUrl" | "finalUrl" | "firstSeenAt" | "contentKind" | "companyName" |
   "roleTitle" | "opportunityType" | "recruitingTerm"
->;
+> & Partial<Pick<ArchivedJobSummary, "locations">>;
 
 export interface FeedBuildOptions {
   creatorUsername: string;
@@ -71,7 +71,7 @@ function toListing(job: FeedSourceJob, url: string, datePosted: number, source: 
     company_name: job.companyName,
     title: job.roleTitle,
     url,
-    locations: [],
+    locations: [...(job.locations ?? [])],
     date_posted: datePosted,
     active: true,
     source
@@ -100,7 +100,12 @@ export function buildFeed(jobs: FeedSourceJob[], options: FeedBuildOptions): Fee
     const url = canonicalizeUrl(job.finalUrl) ?? job.canonicalUrl;
     const existing = byUrl.get(url);
     if (!existing || firstSeen < existing.firstSeen) {
-      byUrl.set(url, { listing: toListing(job, url, Math.floor(firstSeen / 1000), source), firstSeen });
+      const listing = toListing(job, url, Math.floor(firstSeen / 1000), source);
+      // A row fetched before locations were recorded has none; another row for the same page may.
+      if (!listing.locations.length && existing) listing.locations = existing.listing.locations;
+      byUrl.set(url, { listing, firstSeen });
+    } else if (!existing.listing.locations.length && job.locations?.length) {
+      existing.listing.locations = [...job.locations];
     }
   }
   return [...byUrl.values()]

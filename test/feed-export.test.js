@@ -275,6 +275,38 @@ test("publishes the feed only when its content changes", async (t) => {
   await assert.rejects(stat(path.join(work, "feed")), { code: "ENOENT" });
 });
 
+test("job page locations flow into the published listings.json", async (t) => {
+  const { archive, options, remote } = await gitFixture(t, "feed-locations-");
+  const url = "https://jobs.lever.co/acme/abc";
+  await record(archive, "story:loc", url, page(url, {
+    title: "Software Engineer, New Grad 2027",
+    structuredData: [{ type: "JobPosting", title: "Software Engineer, New Grad 2027", organizationName: "Acme" }],
+    locations: ["San Francisco, CA", "Remote"]
+  }));
+
+  assert.deepEqual(archive.listJobs().find((job) => job.canonicalUrl === url).locations, ["San Francisco, CA", "Remote"]);
+  await exportFeed(archive, options);
+  const published = JSON.parse(await git(remote, "show", `main:${FEED_PATH}`));
+  const byUrl = Object.fromEntries(published.map((listing) => [listing.url, listing.locations]));
+  assert.deepEqual(byUrl, {
+    [url]: ["San Francisco, CA", "Remote"],
+    // Pages recorded without a location keep an empty list.
+    "https://job-boards.greenhouse.io/acme/jobs/456": [],
+    "https://jobs.example.com/role/123": []
+  });
+});
+
+test("a job URL takes its locations from whichever row recorded them", () => {
+  const now = new Date("2026-11-04T00:00:00.000Z");
+  const older = summary({ canonicalUrl: "https://bit.ly/a", firstSeenAt: "2026-11-01T00:00:00.000Z" });
+  const newer = summary({ canonicalUrl: "https://tinyurl.com/a", firstSeenAt: "2026-11-02T00:00:00.000Z", locations: ["Austin, TX"] });
+  for (const order of [[older, newer], [newer, older]]) {
+    const [listing] = buildFeed(order, { ...feedOptions, now });
+    assert.equal(listing.date_posted, Date.parse("2026-11-01T00:00:00.000Z") / 1000);
+    assert.deepEqual(listing.locations, ["Austin, TX"]);
+  }
+});
+
 test("publishes on top of an origin that is ahead of the local clone", async (t) => {
   const { archive, options, remote, seed, work } = await gitFixture(t, "feed-ahead-");
   await writeFile(path.join(seed, "other.txt"), "upstream work\n");

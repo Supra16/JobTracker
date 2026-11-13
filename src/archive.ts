@@ -22,6 +22,7 @@ export interface ArchivedJobSummary extends JobClassification {
   storyCount: number;
   occurrenceCount: number;
   creatorUsername: string;
+  locations: string[];
 }
 
 export interface ArchivedStorySource {
@@ -318,7 +319,8 @@ export class JobArchive {
             openGraphTitle: job.openGraphTitle ?? "",
             headingTitle: job.headingTitle ?? "",
             documentTitle: job.documentTitle ?? "",
-            structuredData: job.structuredData ?? []
+            structuredData: job.structuredData ?? [],
+            locations: job.locations ?? []
           }) : "{}",
           job?.fetchSucceeded ? 1 : 0,
           now,
@@ -507,8 +509,15 @@ export class JobArchive {
       storyCount: number(row.story_count),
       occurrenceCount: number(row.occurrence_count),
       creatorUsername: string(row.creator_username),
+      locations: this.locations(row),
       ...classification
     };
+  }
+
+  // Kept apart from metadata(), which feeds the classifier.
+  private locations(row: SqlRow): string[] {
+    const locations = json<{ locations?: unknown }>(row.page_metadata_json, {}).locations;
+    return Array.isArray(locations) ? locations.filter((item): item is string => typeof item === "string") : [];
   }
 
   private metadata(row: SqlRow): {
